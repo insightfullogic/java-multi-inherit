@@ -1,4 +1,4 @@
-package com.insightfullogic.multiinherit;
+package com.insightfullogic.multiinherit.reflection;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;

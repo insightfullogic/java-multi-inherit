@@ -5,7 +5,7 @@ import org.junit.Test;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.insightfullogic.multiinherit.MultiModule;
+import com.insightfullogic.multiinherit.api.MultiModule;
 import com.insightfullogic.multiinherit.simple.A;
 
 public class TestCases {

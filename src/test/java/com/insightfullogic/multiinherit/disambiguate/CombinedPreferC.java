@@ -1,6 +1,6 @@
 package com.insightfullogic.multiinherit.disambiguate;
 
-import com.insightfullogic.multiinherit.Prefer;
+import com.insightfullogic.multiinherit.api.Prefer;
 import com.insightfullogic.multiinherit.simple.A;
 import com.insightfullogic.multiinherit.simple.B;
 

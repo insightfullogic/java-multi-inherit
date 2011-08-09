@@ -1,7 +1,8 @@
-package com.insightfullogic.multiinherit;
+package com.insightfullogic.multiinherit.reflection;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Map;
+
 
 
 public class MultiInvocationHandler implements InvocationHandler {

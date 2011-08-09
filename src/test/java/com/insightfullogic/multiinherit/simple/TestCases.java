@@ -5,37 +5,23 @@ import org.junit.Test;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.insightfullogic.multiinherit.MultiInjector;
-import com.insightfullogic.multiinherit.MultiModule;
+import com.insightfullogic.multiinherit.api.MultiModule;
 
 public class TestCases {
 
 	@Test
 	public void egs() {
-		Injector injector = Guice.createInjector();
+		Injector injector = Guice.createInjector(new MultiModule(Combined.class));
 		A aImpl = injector.getInstance(A.class);
 		B bImpl = injector.getInstance(B.class);
 		Combined combinedImpl = injector.getInstance(CombinedImpl.class);
+		Combined byInjector = injector.getInstance(Combined.class);
 		
-		MultiInjector multiInjector = injector.getInstance(MultiInjector.class); 
-		Combined byInjector = multiInjector.getInstance(Combined.class);
-		
-		// Manual Tests
+		// Is the manual approach ok?
 		assertEquals(aImpl.a(),combinedImpl.a());
 		assertEquals(bImpl.b(),combinedImpl.b());
 		
-		// Manual == Automated
-		assertEquals(combinedImpl.a(), byInjector.a());
-		assertEquals(combinedImpl.b(), byInjector.b());
-	}
-	
-	@Test
-	public void byProvider() {
-		Injector injector = Guice.createInjector(new MultiModule(Combined.class));
-		Combined combinedImpl = injector.getInstance(CombinedImpl.class);
-		Combined byInjector = injector.getInstance(Combined.class);
-		
-		// The same as above, but with slicker syntax
+		// Is the automated approach ok?
 		assertEquals(combinedImpl.a(), byInjector.a());
 		assertEquals(combinedImpl.b(), byInjector.b());
 	}
