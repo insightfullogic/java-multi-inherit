@@ -2,11 +2,18 @@ package com.insightfullogic.multiinherit;
 
 import com.google.inject.AbstractModule;
 
-public abstract class MultiModule extends AbstractModule {
+public class MultiModule extends AbstractModule {
 
 	private static final Object lock = new Object();
 	private static boolean initialised = false;
 	
+	private final Class<?>[] classes;
+	
+	public MultiModule(Class<?> ... classes) {
+		this.classes = classes;
+	}
+	
+	@SuppressWarnings({ "rawtypes", "unchecked" })
 	protected void bindMulti(Class<?> ... classes) {
 		synchronized (lock) {
 			if(!initialised) {
@@ -17,7 +24,11 @@ public abstract class MultiModule extends AbstractModule {
 		for (Class cls : classes) {			
 			bind(cls).toProvider(new MultiProvider(cls));
 		}
-//		bind(Object.class).annotatedWith(Names.named("foo")).toProvider(null);
+	}
+
+	@Override
+	protected void configure() {
+		bindMulti(classes);
 	}
 	
 }

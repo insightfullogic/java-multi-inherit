@@ -1,4 +1,4 @@
-package com.insightfullogic.multiinherit;
+package com.insightfullogic.multiinherit.simple;
 import static junit.framework.Assert.assertEquals;
 
 import org.junit.Test;
@@ -6,9 +6,9 @@ import org.junit.Test;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.MultiInjector;
+import com.insightfullogic.multiinherit.MultiModule;
 
-
-public class TestCase {
+public class TestCases {
 
 	@Test
 	public void egs() {
@@ -31,19 +31,13 @@ public class TestCase {
 	
 	@Test
 	public void byProvider() {
-		Injector injector = Guice.createInjector(new CombinedProviderModule());
+		Injector injector = Guice.createInjector(new MultiModule(Combined.class));
 		Combined combinedImpl = injector.getInstance(CombinedImpl.class);
 		Combined byInjector = injector.getInstance(Combined.class);
 		
+		// The same as above, but with slicker syntax
 		assertEquals(combinedImpl.a(), byInjector.a());
 		assertEquals(combinedImpl.b(), byInjector.b());
 	}
-	
-	@Test
-	public void overriding() {
-		Injector injector = Guice.createInjector();
-		MultiInjector multiInjector = injector.getInstance(MultiInjector.class);
-		CustomB combined = multiInjector.getInstance(CustomB.class);
-		assertEquals("c",combined.b());
-	}
+
 }

@@ -1,4 +1,4 @@
-package com.insightfullogic.multiinherit;
+package com.insightfullogic.multiinherit.simple;
 
 import com.google.inject.ImplementedBy;
 
