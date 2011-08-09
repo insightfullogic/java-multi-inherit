@@ -1,5 +1,4 @@
 package com.insightfullogic.multiinherit.api;
-import com.google.inject.Singleton;
 
 public interface MultiInjector {
 	
