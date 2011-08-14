@@ -10,17 +10,16 @@ import com.insightfullogic.multiinherit.api.MultiModule;
 import com.insightfullogic.multiinherit.simple.A;
 
 public class TestCases {
-	
-	// TODO: add a classloader backend that implements this test
+
 	@Test
 	public void customImplementation() {
-		Injector injector = Guice.createInjector(new MultiModule(CustomAB.class));
-		A aImpl = injector.getInstance(A.class);
-		CustomAB combined = injector.getInstance(CustomAB.class);
-		
+		final Injector injector = Guice.createInjector(new MultiModule(true, CustomAB.class));
+		final A aImpl = injector.getInstance(A.class);
+		final CustomAB combined = injector.getInstance(CustomAB.class);
+
 		// The custom implementation returns 'c'
-		assertEquals("c",combined.b());
-		
+		assertEquals("c", combined.b());
+
 		// The A is proxied from AImpl
 		assertEquals(aImpl.a(), combined.a());
 	}

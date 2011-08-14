@@ -10,7 +10,8 @@ import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.google.inject.Singleton;
 import com.insightfullogic.multiinherit.api.MultiInjector;
-import com.insightfullogic.multiinherit.api.Prefer;
+import com.insightfullogic.multiinherit.common.ResolutionInfo;
+import com.insightfullogic.multiinherit.common.Util;
 
 @Singleton
 public class ReflectionMultiInjector implements MultiInjector {
@@ -29,21 +30,7 @@ public class ReflectionMultiInjector implements MultiInjector {
 			throw new UnsupportedOperationException("To be implemented in future versions");
 		}
 		
-		final Map<ResolutionInfo,Method> preferences = new HashMap<ResolutionInfo, Method>();
-		for (Method meth : combined.getDeclaredMethods()) {
-			final Prefer prefer = meth.getAnnotation(Prefer.class);
-			if(prefer != null) {
-				final Class<?> preferredClass = prefer.value();
-				try {
-					final Method preferredMethod = preferredClass.getMethod(meth.getName(), meth.getParameterTypes());
-					preferences.put(new ResolutionInfo(meth), preferredMethod);
-				} catch (SecurityException e) {
-					throw new IllegalArgumentException(e);
-				} catch (NoSuchMethodException e) {
-					throw new IllegalArgumentException(e);
-				}
-			}
-		}
+		final Map<ResolutionInfo, Method> preferences = Util.getPreferences(combined);
 		final Map<Class<?>,Object> lookup = new HashMap<Class<?>,Object>();
 		for (Class<?> cls : parents) {
 			lookup.put(cls, injector.getInstance(cls));
@@ -51,5 +38,5 @@ public class ReflectionMultiInjector implements MultiInjector {
 		MultiInvocationHandler mih = new MultiInvocationHandler(lookup,preferences);
 		return (T) Proxy.newProxyInstance(getClass().getClassLoader(), interfaces, mih);
 	}
-	
+
 }

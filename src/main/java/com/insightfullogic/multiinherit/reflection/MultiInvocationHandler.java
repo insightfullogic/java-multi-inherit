@@ -3,6 +3,8 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.util.Map;
 
+import com.insightfullogic.multiinherit.common.ResolutionInfo;
+
 
 
 public class MultiInvocationHandler implements InvocationHandler {
