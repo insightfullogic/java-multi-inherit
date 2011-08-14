@@ -42,8 +42,8 @@ public class GenerationMultiInjector implements MultiInjector {
 		cn.version = Opcodes.V1_6;
 		cn.access = Opcodes.ACC_PUBLIC;
 		cn.name = name;
-		cn.superName = "java/lang/Object";
 		if (combined.isInterface()) {
+			cn.superName = "java/lang/Object";
 			final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
 
 			for (final Class<?> inter : combined.getInterfaces()) {
@@ -98,20 +98,23 @@ public class GenerationMultiInjector implements MultiInjector {
 					for (int i = 0; i < exceptions.length; i++) {
 						exceptions[i] = exceptionTypes[i].getCanonicalName();
 					}
+					final Class<?>[] parameterTypes = method.getParameterTypes();
+					final int n = parameterTypes.length;
 					final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
-					mn.maxLocals = 1;
-					mn.maxStack = 1;
+					mn.maxLocals = 1 + n;
+					mn.maxStack = 1 + n;
 					final InsnList isns = mn.instructions;
-					// TODO: deal with arguments
 					isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
 					isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
+					for (int i = 1; i < n + 1; i++) {
+						isns.add(new VarInsnNode(Opcodes.ALOAD, i));
+					}
 					isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
 					isns.add(new InsnNode(Opcodes.ARETURN));
 					mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
 					cn.methods.add(mn);
 				}
 			}
-
 		} else {
 			throw new UnsupportedOperationException("Class Inheritance yet to be implemented");
 		}
