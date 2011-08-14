@@ -21,6 +21,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.api.MultiInjector;
+import com.insightfullogic.multiinherit.api.Prefer;
 
 public class GenerationMultiInjector implements MultiInjector {
 
@@ -60,6 +61,8 @@ public class GenerationMultiInjector implements MultiInjector {
 					methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
 				}
 			}
+
+			// Actually add the concrete combined type
 			cn.interfaces.add(Type.getInternalName(combined));
 
 			// build the constructor:
@@ -72,28 +75,41 @@ public class GenerationMultiInjector implements MultiInjector {
 			consIsns.add(new InsnNode(Opcodes.RETURN));
 			cn.methods.add(cons);
 
+			// Lookup preferences
+			final Map<String, String> preferences = new HashMap<String, String>();
+			for (final Method meth : combined.getDeclaredMethods()) {
+				final Prefer prefer = meth.getAnnotation(Prefer.class);
+				if (prefer != null) {
+					preferences.put(meth.getName() + Type.getMethodDescriptor(meth), Type.getInternalName(prefer.value()));
+				}
+			}
+
 			// Generate Adapter Methods
 			for (final Entry<Method, FieldInfo> meth : methods.entrySet()) {
 				final Method method = meth.getKey();
-				final FieldInfo field = meth.getValue();
-				// null is Signature
-				final Class<?>[] exceptionTypes = method.getExceptionTypes();
-				final String[] exceptions = new String[exceptionTypes.length];
-				for (int i = 0; i < exceptions.length; i++) {
-					exceptions[i] = exceptionTypes[i].getCanonicalName();
-				}
 				final String descriptor = Type.getMethodDescriptor(method);
-				final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
-				mn.maxLocals = 1;
-				mn.maxStack = 1;
-				final InsnList isns = mn.instructions;
-				// TODO: deal with arguments
-				isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-				isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
-				isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
-				isns.add(new InsnNode(Opcodes.ARETURN));
-				mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
-				cn.methods.add(mn);
+				final String prefer = preferences.get(method.getName() + descriptor);
+				final FieldInfo field = meth.getValue();
+				// either no preference, or this is preferred
+				if (prefer == null || field.getTypeInternalName().equals(prefer)) {
+					// null is Signature
+					final Class<?>[] exceptionTypes = method.getExceptionTypes();
+					final String[] exceptions = new String[exceptionTypes.length];
+					for (int i = 0; i < exceptions.length; i++) {
+						exceptions[i] = exceptionTypes[i].getCanonicalName();
+					}
+					final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
+					mn.maxLocals = 1;
+					mn.maxStack = 1;
+					final InsnList isns = mn.instructions;
+					// TODO: deal with arguments
+					isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+					isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
+					isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
+					isns.add(new InsnNode(Opcodes.ARETURN));
+					mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
+					cn.methods.add(mn);
+				}
 			}
 
 		} else {
