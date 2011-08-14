@@ -3,8 +3,10 @@ package com.insightfullogic.multiinherit.generation;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
@@ -42,81 +44,85 @@ public class GenerationMultiInjector implements MultiInjector {
 		cn.version = Opcodes.V1_6;
 		cn.access = Opcodes.ACC_PUBLIC;
 		cn.name = name;
+		final Set<String> alreadyImplementedMethods = new HashSet<String>();
 		if (combined.isInterface()) {
 			cn.superName = "java/lang/Object";
-			final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
-
-			for (final Class<?> inter : combined.getInterfaces()) {
-				// Create a field for every parent
-				final String fieldName = inter.getName().replace('.', '_') + "_Inst";
-				final String descriptor = Type.getDescriptor(inter);
-				final FieldNode field = new FieldNode(Opcodes.ACC_PUBLIC, fieldName, descriptor, null, null);
-				field.visibleAnnotations = Arrays.asList(new AnnotationNode(injectAnn));
-
-				final String internal = Type.getInternalName(inter);
-				cn.interfaces.add(internal);
-				cn.fields.add(field);
-
-				for (final Method meth : inter.getDeclaredMethods()) {
-					methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
-				}
-			}
-
 			// Actually add the concrete combined type
 			cn.interfaces.add(Type.getInternalName(combined));
-
-			// build the constructor:
-			final MethodNode cons = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
-			cons.maxLocals = 1;
-			cons.maxStack = 1;
-			final InsnList consIsns = cons.instructions;
-			consIsns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-			consIsns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V"));
-			consIsns.add(new InsnNode(Opcodes.RETURN));
-			cn.methods.add(cons);
-
-			// Lookup preferences
-			final Map<String, String> preferences = new HashMap<String, String>();
-			for (final Method meth : combined.getDeclaredMethods()) {
-				final Prefer prefer = meth.getAnnotation(Prefer.class);
-				if (prefer != null) {
-					preferences.put(meth.getName() + Type.getMethodDescriptor(meth), Type.getInternalName(prefer.value()));
-				}
-			}
-
-			// Generate Adapter Methods
-			for (final Entry<Method, FieldInfo> meth : methods.entrySet()) {
-				final Method method = meth.getKey();
-				final String descriptor = Type.getMethodDescriptor(method);
-				final String prefer = preferences.get(method.getName() + descriptor);
-				final FieldInfo field = meth.getValue();
-				// either no preference, or this is preferred
-				if (prefer == null || field.getTypeInternalName().equals(prefer)) {
-					// null is Signature
-					final Class<?>[] exceptionTypes = method.getExceptionTypes();
-					final String[] exceptions = new String[exceptionTypes.length];
-					for (int i = 0; i < exceptions.length; i++) {
-						exceptions[i] = exceptionTypes[i].getCanonicalName();
-					}
-					final Class<?>[] parameterTypes = method.getParameterTypes();
-					final int n = parameterTypes.length;
-					final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
-					mn.maxLocals = 1 + n;
-					mn.maxStack = 1 + n;
-					final InsnList isns = mn.instructions;
-					isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-					isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
-					for (int i = 1; i < n + 1; i++) {
-						isns.add(new VarInsnNode(Opcodes.ALOAD, i));
-					}
-					isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
-					isns.add(new InsnNode(Opcodes.ARETURN));
-					mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
-					cn.methods.add(mn);
-				}
-			}
 		} else {
-			throw new UnsupportedOperationException("Class Inheritance yet to be implemented");
+			cn.superName = Type.getInternalName(combined);
+			for (final Method method : combined.getDeclaredMethods()) {
+				alreadyImplementedMethods.add(method.getName() + Type.getMethodDescriptor(method));
+			}
+		}
+		final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
+
+		for (final Class<?> inter : combined.getInterfaces()) {
+			// Create a field for every parent
+			final String fieldName = inter.getName().replace('.', '_') + "_Inst";
+			final String descriptor = Type.getDescriptor(inter);
+			final FieldNode field = new FieldNode(Opcodes.ACC_PUBLIC, fieldName, descriptor, null, null);
+			field.visibleAnnotations = Arrays.asList(new AnnotationNode(injectAnn));
+
+			final String internal = Type.getInternalName(inter);
+			cn.interfaces.add(internal);
+			cn.fields.add(field);
+
+			for (final Method meth : inter.getDeclaredMethods()) {
+				methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
+			}
+		}
+
+		// build the constructor:
+		final MethodNode cons = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
+		cons.maxLocals = 1;
+		cons.maxStack = 1;
+		final InsnList consIsns = cons.instructions;
+		consIsns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		consIsns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V"));
+		consIsns.add(new InsnNode(Opcodes.RETURN));
+		cn.methods.add(cons);
+
+		// Lookup preferences
+		final Map<String, String> preferences = new HashMap<String, String>();
+		for (final Method meth : combined.getDeclaredMethods()) {
+			final Prefer prefer = meth.getAnnotation(Prefer.class);
+			if (prefer != null) {
+				preferences.put(meth.getName() + Type.getMethodDescriptor(meth), Type.getInternalName(prefer.value()));
+			}
+		}
+
+		// Generate Adapter Methods
+		for (final Entry<Method, FieldInfo> meth : methods.entrySet()) {
+			final Method method = meth.getKey();
+			final String descriptor = Type.getMethodDescriptor(method);
+			final String methodInfo = method.getName() + descriptor;
+			final String prefer = preferences.get(methodInfo);
+			final FieldInfo field = meth.getValue();
+			// either no preference, or this is preferred
+			if (!alreadyImplementedMethods.contains(methodInfo) && (prefer == null || field.getTypeInternalName().equals(prefer))) {
+				// null is Signature
+				final Class<?>[] exceptionTypes = method.getExceptionTypes();
+				final String[] exceptions = new String[exceptionTypes.length];
+				for (int i = 0; i < exceptions.length; i++) {
+					exceptions[i] = exceptionTypes[i].getCanonicalName();
+				}
+				final Class<?>[] parameterTypes = method.getParameterTypes();
+				final int n = parameterTypes.length;
+				final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
+				mn.maxLocals = 1 + n;
+				mn.maxStack = 1 + n;
+				final InsnList isns = mn.instructions;
+				isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+				isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
+				for (int i = 1; i < n + 1; i++) {
+					isns.add(new VarInsnNode(Opcodes.ALOAD, i));
+				}
+				isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
+				isns.add(new InsnNode(Opcodes.ARETURN));
+				mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
+				cn.methods.add(mn);
+			}
 		}
 		final Class<?> implClass = loader.defineClass(binaryName, cn);
 		try {
