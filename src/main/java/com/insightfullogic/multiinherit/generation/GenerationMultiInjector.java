@@ -115,11 +115,11 @@ public class GenerationMultiInjector implements MultiInjector {
 				final InsnList isns = mn.instructions;
 				isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
 				isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
-				for (int i = 1; i < n + 1; i++) {
-					isns.add(new VarInsnNode(Opcodes.ALOAD, i));
+				for (int i = 0; i < n; i++) {
+					isns.add(new VarInsnNode(getLoadConst(parameterTypes[i]), i + 1));
 				}
 				isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
-				isns.add(new InsnNode(Opcodes.ARETURN));
+				isns.add(new InsnNode(getReturnConst(method.getReturnType())));
 				mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
 				cn.methods.add(mn);
 			}
@@ -134,6 +134,35 @@ public class GenerationMultiInjector implements MultiInjector {
 		} catch (final IllegalAccessException e) {
 			throw new IllegalArgumentException(e);
 		}
+	}
+
+	private int getReturnConst(final Class<?> type) {
+		// System.out.println(type == Long.T);
+		if (type == Void.TYPE) {
+			return Opcodes.RETURN;
+		} else if (type == Double.TYPE) {
+			return Opcodes.DRETURN;
+		} else if (type == Float.TYPE) {
+			return Opcodes.FRETURN;
+		} else if (type == Integer.TYPE || type == Byte.TYPE || type == Short.TYPE || type == Boolean.TYPE || type == Character.TYPE) {
+			return Opcodes.IRETURN;
+		} else if (type == Long.TYPE) {
+			return Opcodes.LRETURN;
+		}
+		return Opcodes.ARETURN;
+	}
+
+	private int getLoadConst(final Class<?> type) {
+		if (type == Double.TYPE) {
+			return Opcodes.DLOAD;
+		} else if (type == Float.TYPE) {
+			return Opcodes.FLOAD;
+		} else if (type == Integer.TYPE || type == Byte.TYPE || type == Short.TYPE || type == Boolean.TYPE || type == Character.TYPE) {
+			return Opcodes.ILOAD;
+		} else if (type == Long.class) {
+			return Opcodes.LLOAD;
+		}
+		return Opcodes.ALOAD;
 	}
 
 	class FieldInfo {
