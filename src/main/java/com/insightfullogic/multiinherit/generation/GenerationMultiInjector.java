@@ -62,9 +62,6 @@ public class GenerationMultiInjector implements MultiInjector {
 		this.injector = injector;
 	}
 
-	// private final String unimplemented =
-	// Type.getInternalName(UnsupportedOperationException.class);
-
 	@SuppressWarnings("unchecked")
 	@Override
 	public <T> T getInstance(final Class<T> combined) {
@@ -242,19 +239,6 @@ public class GenerationMultiInjector implements MultiInjector {
 		Arrays.fill(buff, val);
 		return buff;
 	}
-
-	// private MethodNode newUnimplementedMethod(final Method method) {
-	// final MethodNode mn = newMethod(method);
-	// mn.maxStack = 3;
-	// final InsnList isns = mn.instructions;
-	// isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-	// isns.add(new TypeInsnNode(Opcodes.NEW, unimplemented));
-	// isns.add(new InsnNode(Opcodes.DUP));
-	// isns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, unimplemented,
-	// "<init>", "()V"));
-	// isns.add(new InsnNode(Opcodes.ATHROW));
-	// return mn;
-	// }
 
 	private MethodNode newAdapterMethod(final String name, final Method method, final FieldInfo field) {
 		final Class<?>[] parameterTypes = method.getParameterTypes();
