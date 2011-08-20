@@ -41,26 +41,25 @@ import com.insightfullogic.multiinherit.api.TypeHierachyException;
 
 public class GenerationMultiInjector implements MultiInjector {
 
-	@Inject
-	Injector injector;
-
+	private final Injector injector;
 	private final GeneratedClassLoader loader;
 	private final String injectAnn;
 	private final String overrideAnn;
 
 	private final Map<String, ClassCache> loadedNames;
 
-	public GenerationMultiInjector() {
+	@Inject
+	public GenerationMultiInjector(final Injector injector) {
 		injectAnn = Type.getDescriptor(Inject.class);
 		overrideAnn = Type.getDescriptor(Override.class);
 		loadedNames = new HashMap<String, ClassCache>();
 		loader = AccessController.doPrivileged(new PrivilegedAction<GeneratedClassLoader>() {
 			@Override
 			public GeneratedClassLoader run() {
-				return new GeneratedClassLoader();
+				return injector.getInstance(GeneratedClassLoader.class);
 			}
 		});
-
+		this.injector = injector;
 	}
 
 	// private final String unimplemented =

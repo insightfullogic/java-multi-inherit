@@ -8,7 +8,14 @@ import java.io.OutputStream;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
 
+import com.google.inject.Inject;
+import com.google.inject.name.Named;
+
 public class GeneratedClassLoader extends ClassLoader {
+
+	@Inject
+	@Named("dump")
+	Boolean dumpClasses;
 
 	/**
 	 * Generate the bytecode for an ASM Tree Class, and then load it into the
@@ -18,35 +25,33 @@ public class GeneratedClassLoader extends ClassLoader {
 	 * @return
 	 */
 	public synchronized Class<?> defineClass(final String binaryName, final ClassNode cn) {
-		final Class<?> cls = findLoadedClass(binaryName);
-		if (cls != null) {
-			return cls;
-		}
 		final ClassWriter cw = new ClassWriter(0);
 		cn.accept(cw);
 		final byte[] b = cw.toByteArray();
-		final File f = new File(System.getProperty("user.home") + File.separator + "dump" + File.separator
-				+ binaryName.replace('.', File.separatorChar) + ".class");
-		final File dir = f.getParentFile();
-		if ((dir.exists() && dir.isDirectory()) || dir.mkdirs()) {
-			OutputStream out = null;
-			try {
-				out = new FileOutputStream(f);
-				out.write(b);
-				out.flush();
-			} catch (final IOException e) {
-				e.printStackTrace();
-			} finally {
-				if (out != null) {
-					try {
-						out.close();
-					} catch (final IOException e) {
-						e.printStackTrace();
+		if (dumpClasses) {
+			final File f = new File(System.getProperty("user.home") + File.separator + "dump" + File.separator
+					+ binaryName.replace('.', File.separatorChar) + ".class");
+			final File dir = f.getParentFile();
+			if ((dir.exists() && dir.isDirectory()) || dir.mkdirs()) {
+				OutputStream out = null;
+				try {
+					out = new FileOutputStream(f);
+					out.write(b);
+					out.flush();
+				} catch (final IOException e) {
+					e.printStackTrace();
+				} finally {
+					if (out != null) {
+						try {
+							out.close();
+						} catch (final IOException e) {
+							e.printStackTrace();
+						}
 					}
 				}
+			} else {
+				throw new IllegalStateException("Unable to create directory: " + f.getParent());
 			}
-		} else {
-			throw new IllegalStateException("Unable to create directory: " + f.getParent());
 		}
 		return defineClass(binaryName, b, 0, b.length);
 	}
