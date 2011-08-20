@@ -10,7 +10,7 @@ import com.insightfullogic.multiinherit.Util;
 import com.insightfullogic.multiinherit.Util.Do;
 import com.insightfullogic.multiinherit.api.MultiModule;
 
-public class TestCases {
+public class ArgumentTestCases {
 
 	@Test
 	public void checkArguments() {

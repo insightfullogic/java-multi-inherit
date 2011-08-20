@@ -11,7 +11,7 @@ import com.insightfullogic.multiinherit.Util.Do;
 import com.insightfullogic.multiinherit.api.MultiModule;
 import com.insightfullogic.multiinherit.simple.A;
 
-public class TestCases {
+public class DisambiguationTestCases {
 
 	@Test
 	public void checkAtPrefer() {

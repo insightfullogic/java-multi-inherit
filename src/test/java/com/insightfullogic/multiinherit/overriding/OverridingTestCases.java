@@ -9,7 +9,7 @@ import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.api.MultiModule;
 import com.insightfullogic.multiinherit.simple.A;
 
-public class TestCases {
+public class OverridingTestCases {
 
 	@Test
 	public void customImplementation() {

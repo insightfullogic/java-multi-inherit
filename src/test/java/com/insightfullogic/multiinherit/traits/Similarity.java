@@ -10,10 +10,3 @@ public interface Similarity {
 	public boolean isNotSimilar(Object other);
 
 }
-
-abstract class SimilarityImpl implements Similarity {
-	@Override
-	public boolean isNotSimilar(final Object other) {
-		return !isSimilar(other);
-	}
-}

@@ -1,9 +1,18 @@
 package com.insightfullogic.multiinherit.generation;
 
+import static java.util.Arrays.asList;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -24,6 +33,7 @@ import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.api.MultiInjector;
 import com.insightfullogic.multiinherit.api.Prefer;
+import com.insightfullogic.multiinherit.api.TraitWith;
 
 public class GenerationMultiInjector implements MultiInjector {
 
@@ -33,6 +43,9 @@ public class GenerationMultiInjector implements MultiInjector {
 	private final GeneratedClassLoader loader = new GeneratedClassLoader();
 	private final String injectAnn = Type.getDescriptor(Inject.class);
 	private final String overrideAnn = Type.getDescriptor(Override.class);
+
+	// private final String unimplemented =
+	// Type.getInternalName(UnsupportedOperationException.class);
 
 	@SuppressWarnings("unchecked")
 	@Override
@@ -56,13 +69,37 @@ public class GenerationMultiInjector implements MultiInjector {
 			}
 		}
 		final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
+		final Map<Class<?>, TraitInfo> traits = new HashMap<Class<?>, TraitInfo>();
 
 		for (final Class<?> inter : combined.getInterfaces()) {
 			// Create a field for every parent
 			final String fieldName = inter.getName().replace('.', '_') + "_Inst";
 			final String descriptor = Type.getDescriptor(inter);
 			final FieldNode field = new FieldNode(Opcodes.ACC_PUBLIC, fieldName, descriptor, null, null);
-			field.visibleAnnotations = Arrays.asList(new AnnotationNode(injectAnn));
+
+			// The Trait case:
+			final TraitWith traitWith = inter.getAnnotation(TraitWith.class);
+			if (traitWith != null) {
+				final Class<?> impl = traitWith.value();
+				// to implement = {required methods} - {implemented methods}
+				final List<Method> toImplement = new ArrayList<Method>(asList(inter.getDeclaredMethods()));
+				System.out.println(toImplement);
+				for (final Method implemented : impl.getDeclaredMethods()) {
+					final String mName = implemented.getName();
+					final Class<?>[] mArgs = implemented.getParameterTypes();
+					final Iterator<Method> it = toImplement.iterator();
+					while (it.hasNext()) {
+						final Method absMethod = it.next();
+						if (absMethod.getName().equals(mName) && Arrays.deepEquals(absMethod.getParameterTypes(), mArgs)) {
+							it.remove();
+							break;
+						}
+					}
+				}
+				traits.put(inter, new TraitInfo(impl, inter, toImplement));
+			} else {
+				field.visibleAnnotations = asList(new AnnotationNode(injectAnn));
+			}
 
 			final String internal = Type.getInternalName(inter);
 			cn.interfaces.add(internal);
@@ -73,15 +110,7 @@ public class GenerationMultiInjector implements MultiInjector {
 			}
 		}
 
-		// build the constructor:
-		final MethodNode cons = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
-		cons.maxLocals = 1;
-		cons.maxStack = 1;
-		final InsnList consIsns = cons.instructions;
-		consIsns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-		consIsns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V"));
-		consIsns.add(new InsnNode(Opcodes.RETURN));
-		cn.methods.add(cons);
+		newConstructor(cn);
 
 		// Lookup preferences
 		final Map<String, String> preferences = new HashMap<String, String>();
@@ -102,38 +131,146 @@ public class GenerationMultiInjector implements MultiInjector {
 			// either no preference, or this is preferred
 			if (!alreadyImplementedMethods.contains(methodInfo) && (prefer == null || field.getTypeInternalName().equals(prefer))) {
 				// null is Signature
-				final Class<?>[] exceptionTypes = method.getExceptionTypes();
-				final String[] exceptions = new String[exceptionTypes.length];
-				for (int i = 0; i < exceptions.length; i++) {
-					exceptions[i] = exceptionTypes[i].getCanonicalName();
-				}
-				final Class<?>[] parameterTypes = method.getParameterTypes();
-				final int n = parameterTypes.length;
-				final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, null);
-				mn.maxLocals = 1 + n;
-				mn.maxStack = 1 + n;
-				final InsnList isns = mn.instructions;
-				isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
-				isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
-				for (int i = 0; i < n; i++) {
-					isns.add(new VarInsnNode(getLoadConst(parameterTypes[i]), i + 1));
-				}
-				isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), descriptor));
-				isns.add(new InsnNode(getReturnConst(method.getReturnType())));
-				mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
-				cn.methods.add(mn);
+				cn.methods.add(newAdapterMethod(name, method, field));
 			}
 		}
+
+		// Generate Traits
+		final Map<Class<?>, Class<?>> traitInstances = new HashMap<Class<?>, Class<?>>();
+		for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
+			final TraitInfo info = trait.getValue();
+			final String binaryTraitName = info.getImplementation().getName() + "Concrete";
+			traitInstances.put(trait.getKey(), loader.defineClass(binaryTraitName, newConcreteTrait(info)));
+		}
+
 		final Class<?> implClass = loader.defineClass(binaryName, cn);
 		try {
 			final T inst = (T) implClass.newInstance();
 			injector.injectMembers(inst);
+			// Inject traits
+			for (final Field field : implClass.getDeclaredFields()) {
+				final Class<?> traitInstance = traitInstances.get(field.getType());
+				if (traitInstance != null) {
+					// Always 1 constructor:
+					final Constructor<?> cons = traitInstance.getConstructors()[0];
+					field.set(inst, cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, inst).toArray()));
+				}
+			}
 			return inst;
 		} catch (final InstantiationException e) {
 			throw new IllegalArgumentException(e);
 		} catch (final IllegalAccessException e) {
 			throw new IllegalArgumentException(e);
+		} catch (final InvocationTargetException e) {
+			throw new IllegalArgumentException(e);
+		} catch (final IllegalArgumentException e) {
+			throw e;
 		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private ClassNode newConcreteTrait(final TraitInfo info) {
+		final Type interfaceType = Type.getType(info.getInterfase());
+		final Type superType = Type.getType(info.getImplementation());
+		final String implName = superType.getInternalName();
+		final ClassNode cn = new ClassNode();
+		cn.version = Opcodes.V1_6;
+		cn.access = Opcodes.ACC_PUBLIC;
+		cn.name = implName + "Concrete";
+		cn.superName = implName;
+		final List<Method> toImplement = info.getToImplement();
+		newParamConstructor(cn, types(toImplement.size(), interfaceType));
+
+		// add trait fields, one for each possible method overload
+		for (int i = 0; i < toImplement.size(); i++) {
+			cn.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "overload" + i, interfaceType.getDescriptor(), null, null));
+		}
+
+		int i = 0;
+		for (final Method method : toImplement) {
+			final FieldInfo fi = new FieldInfo("overload" + i, interfaceType.getInternalName(), interfaceType.getDescriptor());
+			cn.methods.add(newAdapterMethod(cn.name, method, fi));
+			i++;
+		}
+		return cn;
+	}
+
+	private Type[] types(final int n, final Type val) {
+		final Type[] buff = new Type[n];
+		Arrays.fill(buff, val);
+		return buff;
+	}
+
+	// private MethodNode newUnimplementedMethod(final Method method) {
+	// final MethodNode mn = newMethod(method);
+	// mn.maxStack = 3;
+	// final InsnList isns = mn.instructions;
+	// isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+	// isns.add(new TypeInsnNode(Opcodes.NEW, unimplemented));
+	// isns.add(new InsnNode(Opcodes.DUP));
+	// isns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, unimplemented,
+	// "<init>", "()V"));
+	// isns.add(new InsnNode(Opcodes.ATHROW));
+	// return mn;
+	// }
+
+	private MethodNode newAdapterMethod(final String name, final Method method, final FieldInfo field) {
+		final Class<?>[] parameterTypes = method.getParameterTypes();
+		final MethodNode mn = newMethod(method);
+		mn.maxStack = 1 + parameterTypes.length;
+		final InsnList isns = mn.instructions;
+		isns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		isns.add(new FieldInsnNode(Opcodes.GETFIELD, name, field.getName(), field.getTypeDescriptor()));
+		for (int i = 0; i < parameterTypes.length; i++) {
+			isns.add(new VarInsnNode(getLoadConst(parameterTypes[i]), i + 1));
+		}
+		isns.add(new MethodInsnNode(Opcodes.INVOKEINTERFACE, field.getTypeInternalName(), method.getName(), Type.getMethodDescriptor(method)));
+		isns.add(new InsnNode(getReturnConst(method.getReturnType())));
+		return mn;
+	}
+
+	private MethodNode newMethod(final Method method) {
+		final String descriptor = Type.getMethodDescriptor(method);
+		final String[] exceptions = getExceptions(method);
+		final int n = method.getParameterTypes().length;
+		final MethodNode mn = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), descriptor, null, exceptions);
+		mn.maxLocals = 1 + n;
+		mn.visibleAnnotations = Arrays.asList(new AnnotationNode(overrideAnn));
+		return mn;
+	}
+
+	private String[] getExceptions(final Method method) {
+		final Class<?>[] exceptionTypes = method.getExceptionTypes();
+		final String[] exceptions = new String[exceptionTypes.length];
+		for (int i = 0; i < exceptions.length; i++) {
+			exceptions[i] = exceptionTypes[i].getCanonicalName();
+		}
+		return exceptions;
+	}
+
+	private void newConstructor(final ClassNode cn) {
+		newParamConstructor(cn);
+	}
+
+	@SuppressWarnings("unchecked")
+	private void newParamConstructor(final ClassNode cn, final Type... parameters) {
+		final MethodNode cons = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", Type.getMethodDescriptor(Type.VOID_TYPE, parameters), null, null);
+		final int n = parameters.length;
+		cons.maxLocals = 1 + n;
+		cons.maxStack = 2;
+		final InsnList consIsns = cons.instructions;
+		consIsns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		consIsns.add(new MethodInsnNode(Opcodes.INVOKESPECIAL, cn.superName, "<init>", "()V"));
+		consIsns.add(new VarInsnNode(Opcodes.ALOAD, 0));
+		for (int i = 0; i < n; i++) {
+			final Type param = parameters[i];
+			// load parameter
+			consIsns.add(new VarInsnNode(getLoadConst(param), i + 1));
+			// store field
+			consIsns.add(new FieldInsnNode(Opcodes.PUTFIELD, cn.name, "overload" + i, param.getDescriptor()));
+		}
+		consIsns.add(new InsnNode(Opcodes.RETURN));
+		cn.methods.add(cons);
 	}
 
 	private int getReturnConst(final Class<?> type) {
@@ -163,6 +300,28 @@ public class GenerationMultiInjector implements MultiInjector {
 			return Opcodes.LLOAD;
 		}
 		return Opcodes.ALOAD;
+	}
+
+	private int getLoadConst(final Type type) {
+		final int sort = type.getSort();
+		switch (sort) {
+		case Type.DOUBLE:
+			return Opcodes.DLOAD;
+		case Type.FLOAT:
+			return Opcodes.FLOAD;
+		case Type.INT:
+		case Type.BYTE:
+		case Type.SHORT:
+		case Type.BOOLEAN:
+		case Type.CHAR:
+			return Opcodes.ILOAD;
+		case Type.LONG:
+			return Opcodes.LLOAD;
+		case Type.OBJECT:
+			return Opcodes.ALOAD;
+		default:
+			throw new IllegalArgumentException("Unknown sort type: " + sort);
+		}
 	}
 
 	class FieldInfo {
