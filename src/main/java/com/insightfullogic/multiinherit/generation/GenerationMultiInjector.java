@@ -6,6 +6,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,11 +44,24 @@ public class GenerationMultiInjector implements MultiInjector {
 	@Inject
 	Injector injector;
 
-	private final GeneratedClassLoader loader = new GeneratedClassLoader();
-	private final String injectAnn = Type.getDescriptor(Inject.class);
-	private final String overrideAnn = Type.getDescriptor(Override.class);
+	private final GeneratedClassLoader loader;
+	private final String injectAnn;
+	private final String overrideAnn;
 
-	private final Map<String, ClassCache> loadedNames = new HashMap<String, ClassCache>();
+	private final Map<String, ClassCache> loadedNames;
+
+	public GenerationMultiInjector() {
+		injectAnn = Type.getDescriptor(Inject.class);
+		overrideAnn = Type.getDescriptor(Override.class);
+		loadedNames = new HashMap<String, ClassCache>();
+		loader = AccessController.doPrivileged(new PrivilegedAction<GeneratedClassLoader>() {
+			@Override
+			public GeneratedClassLoader run() {
+				return new GeneratedClassLoader();
+			}
+		});
+
+	}
 
 	// private final String unimplemented =
 	// Type.getInternalName(UnsupportedOperationException.class);
@@ -350,32 +365,6 @@ public class GenerationMultiInjector implements MultiInjector {
 		default:
 			throw new IllegalArgumentException("Unknown sort type: " + sort);
 		}
-	}
-
-	class FieldInfo {
-		private final String name;
-		private final String typeInternalName;
-		private final String typeDescriptor;
-
-		public FieldInfo(final String name, final String typeInternalName, final String typeDescriptor) {
-			super();
-			this.name = name;
-			this.typeInternalName = typeInternalName;
-			this.typeDescriptor = typeDescriptor;
-		}
-
-		public String getName() {
-			return name;
-		}
-
-		public String getTypeInternalName() {
-			return typeInternalName;
-		}
-
-		public String getTypeDescriptor() {
-			return typeDescriptor;
-		}
-
 	}
 
 }

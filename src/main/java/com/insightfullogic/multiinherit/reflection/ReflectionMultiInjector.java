@@ -19,6 +19,7 @@ public class ReflectionMultiInjector implements MultiInjector {
 	@Inject
 	Injector injector;
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public <T> T getInstance(final Class<T> combined) {
 		final Class<?>[] parents = combined.getInterfaces();
