@@ -1,8 +1,8 @@
 package com.insightfullogic.multiinherit.api;
 
-public class TraitException extends RuntimeException {
+public class TypeHierachyException extends RuntimeException {
 
-	public TraitException(final String message) {
+	public TypeHierachyException(final String message) {
 		super(message);
 	}
 

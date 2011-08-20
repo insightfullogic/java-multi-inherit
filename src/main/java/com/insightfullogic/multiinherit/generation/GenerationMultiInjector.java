@@ -6,6 +6,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -34,6 +35,7 @@ import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.api.MultiInjector;
 import com.insightfullogic.multiinherit.api.Prefer;
 import com.insightfullogic.multiinherit.api.TraitWith;
+import com.insightfullogic.multiinherit.api.TypeHierachyException;
 
 public class GenerationMultiInjector implements MultiInjector {
 
@@ -83,18 +85,10 @@ public class GenerationMultiInjector implements MultiInjector {
 				final Class<?> impl = traitWith.value();
 				// to implement = {required methods} - {implemented methods}
 				final List<Method> toImplement = new ArrayList<Method>(asList(inter.getDeclaredMethods()));
-				System.out.println(toImplement);
-				for (final Method implemented : impl.getDeclaredMethods()) {
-					final String mName = implemented.getName();
-					final Class<?>[] mArgs = implemented.getParameterTypes();
-					final Iterator<Method> it = toImplement.iterator();
-					while (it.hasNext()) {
-						final Method absMethod = it.next();
-						if (absMethod.getName().equals(mName) && Arrays.deepEquals(absMethod.getParameterTypes(), mArgs)) {
-							it.remove();
-							break;
-						}
-					}
+				removeImplementedMethods(impl, toImplement);
+				if (combined.isInterface() && !toImplement.isEmpty()) {
+					throw new TypeHierachyException("Cannot combined interface " + combined.getName() + "with trait: " + inter.getName()
+							+ " since it has unimplemented methods");
 				}
 				traits.put(inter, new TraitInfo(impl, inter, toImplement));
 			} else {
@@ -107,6 +101,16 @@ public class GenerationMultiInjector implements MultiInjector {
 
 			for (final Method meth : inter.getDeclaredMethods()) {
 				methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
+			}
+		}
+
+		// final Validate trait final method implementations
+		for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
+			final List<Method> toImplement = new ArrayList<Method>(trait.getValue().getToImplement());
+			removeImplementedMethods(combined, toImplement);
+			if (!toImplement.isEmpty()) {
+				throw new TypeHierachyException(MessageFormat.format("Error composing trait {0} with class {1} Cannot implementations for {2}", trait
+						.getKey().getName(), combined.getName(), toImplement));
 			}
 		}
 
@@ -165,6 +169,21 @@ public class GenerationMultiInjector implements MultiInjector {
 			throw new IllegalArgumentException(e);
 		} catch (final IllegalArgumentException e) {
 			throw e;
+		}
+	}
+
+	private void removeImplementedMethods(final Class<?> impl, final List<Method> toImplement) {
+		for (final Method implemented : impl.getDeclaredMethods()) {
+			final String mName = implemented.getName();
+			final Class<?>[] mArgs = implemented.getParameterTypes();
+			final Iterator<Method> it = toImplement.iterator();
+			while (it.hasNext()) {
+				final Method absMethod = it.next();
+				if (absMethod.getName().equals(mName) && Arrays.deepEquals(absMethod.getParameterTypes(), mArgs)) {
+					it.remove();
+					break;
+				}
+			}
 		}
 	}
 
