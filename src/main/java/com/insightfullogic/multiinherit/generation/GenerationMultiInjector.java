@@ -46,6 +46,8 @@ public class GenerationMultiInjector implements MultiInjector {
 	private final String injectAnn = Type.getDescriptor(Inject.class);
 	private final String overrideAnn = Type.getDescriptor(Override.class);
 
+	private final Map<String, ClassCache> loadedNames = new HashMap<String, ClassCache>();
+
 	// private final String unimplemented =
 	// Type.getInternalName(UnsupportedOperationException.class);
 
@@ -53,107 +55,114 @@ public class GenerationMultiInjector implements MultiInjector {
 	@Override
 	public <T> T getInstance(final Class<T> combined) {
 		final String binaryName = combined.getName() + "Impl";
-		final String name = Type.getInternalName(combined) + "Impl";
-		// Create the basic class using ASM's Tree api
-		final ClassNode cn = new ClassNode();
-		cn.version = Opcodes.V1_6;
-		cn.access = Opcodes.ACC_PUBLIC;
-		cn.name = name;
-		final Set<String> alreadyImplementedMethods = new HashSet<String>();
-		if (combined.isInterface()) {
-			cn.superName = "java/lang/Object";
-			// Actually add the concrete combined type
-			cn.interfaces.add(Type.getInternalName(combined));
-		} else {
-			cn.superName = Type.getInternalName(combined);
-			for (final Method method : combined.getDeclaredMethods()) {
-				alreadyImplementedMethods.add(method.getName() + Type.getMethodDescriptor(method));
-			}
-		}
-		final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
-		final Map<Class<?>, TraitInfo> traits = new HashMap<Class<?>, TraitInfo>();
+		ClassCache cache = loadedNames.get(binaryName);
 
-		for (final Class<?> inter : combined.getInterfaces()) {
-			// Create a field for every parent
-			final String fieldName = inter.getName().replace('.', '_') + "_Inst";
-			final String descriptor = Type.getDescriptor(inter);
-			final FieldNode field = new FieldNode(Opcodes.ACC_PUBLIC, fieldName, descriptor, null, null);
-
-			// The Trait case:
-			final TraitWith traitWith = inter.getAnnotation(TraitWith.class);
-			if (traitWith != null) {
-				final Class<?> impl = traitWith.value();
-				// to implement = {required methods} - {implemented methods}
-				final List<Method> toImplement = new ArrayList<Method>(asList(inter.getDeclaredMethods()));
-				removeImplementedMethods(impl, toImplement);
-				if (combined.isInterface() && !toImplement.isEmpty()) {
-					throw new TypeHierachyException("Cannot combined interface " + combined.getName() + "with trait: " + inter.getName()
-							+ " since it has unimplemented methods");
-				}
-				traits.put(inter, new TraitInfo(impl, inter, toImplement));
+		if (cache == null) {
+			final String name = Type.getInternalName(combined) + "Impl";
+			// Create the basic class using ASM's Tree api
+			final ClassNode cn = new ClassNode();
+			cn.version = Opcodes.V1_6;
+			cn.access = Opcodes.ACC_PUBLIC;
+			cn.name = name;
+			final Set<String> alreadyImplementedMethods = new HashSet<String>();
+			if (combined.isInterface()) {
+				cn.superName = "java/lang/Object";
+				// Actually add the concrete combined type
+				cn.interfaces.add(Type.getInternalName(combined));
 			} else {
-				field.visibleAnnotations = asList(new AnnotationNode(injectAnn));
+				cn.superName = Type.getInternalName(combined);
+				for (final Method method : combined.getDeclaredMethods()) {
+					alreadyImplementedMethods.add(method.getName() + Type.getMethodDescriptor(method));
+				}
+			}
+			final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
+			final Map<Class<?>, TraitInfo> traits = new HashMap<Class<?>, TraitInfo>();
+
+			for (final Class<?> inter : combined.getInterfaces()) {
+				// Create a field for every parent
+				final String fieldName = inter.getName().replace('.', '_') + "_Inst";
+				final String descriptor = Type.getDescriptor(inter);
+				final FieldNode field = new FieldNode(Opcodes.ACC_PUBLIC, fieldName, descriptor, null, null);
+
+				// The Trait case:
+				final TraitWith traitWith = inter.getAnnotation(TraitWith.class);
+				if (traitWith != null) {
+					final Class<?> impl = traitWith.value();
+					// to implement = {required methods} - {implemented methods}
+					final List<Method> toImplement = new ArrayList<Method>(asList(inter.getDeclaredMethods()));
+					removeImplementedMethods(impl, toImplement);
+					if (combined.isInterface() && !toImplement.isEmpty()) {
+						throw new TypeHierachyException("Cannot combined interface " + combined.getName() + "with trait: " + inter.getName()
+								+ " since it has unimplemented methods");
+					}
+					traits.put(inter, new TraitInfo(impl, inter, toImplement));
+				} else {
+					field.visibleAnnotations = asList(new AnnotationNode(injectAnn));
+				}
+
+				final String internal = Type.getInternalName(inter);
+				cn.interfaces.add(internal);
+				cn.fields.add(field);
+
+				for (final Method meth : inter.getDeclaredMethods()) {
+					methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
+				}
 			}
 
-			final String internal = Type.getInternalName(inter);
-			cn.interfaces.add(internal);
-			cn.fields.add(field);
-
-			for (final Method meth : inter.getDeclaredMethods()) {
-				methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
+			// final Validate trait final method implementations
+			for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
+				final List<Method> toImplement = new ArrayList<Method>(trait.getValue().getToImplement());
+				removeImplementedMethods(combined, toImplement);
+				if (!toImplement.isEmpty()) {
+					throw new TypeHierachyException(MessageFormat.format("Error composing trait {0} with class {1} Cannot implementations for {2}",
+							trait.getKey().getName(), combined.getName(), toImplement));
+				}
 			}
-		}
 
-		// final Validate trait final method implementations
-		for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
-			final List<Method> toImplement = new ArrayList<Method>(trait.getValue().getToImplement());
-			removeImplementedMethods(combined, toImplement);
-			if (!toImplement.isEmpty()) {
-				throw new TypeHierachyException(MessageFormat.format("Error composing trait {0} with class {1} Cannot implementations for {2}", trait
-						.getKey().getName(), combined.getName(), toImplement));
+			newConstructor(cn);
+
+			// Lookup preferences
+			final Map<String, String> preferences = new HashMap<String, String>();
+			for (final Method meth : combined.getDeclaredMethods()) {
+				final Prefer prefer = meth.getAnnotation(Prefer.class);
+				if (prefer != null) {
+					preferences.put(meth.getName() + Type.getMethodDescriptor(meth), Type.getInternalName(prefer.value()));
+				}
 			}
-		}
 
-		newConstructor(cn);
-
-		// Lookup preferences
-		final Map<String, String> preferences = new HashMap<String, String>();
-		for (final Method meth : combined.getDeclaredMethods()) {
-			final Prefer prefer = meth.getAnnotation(Prefer.class);
-			if (prefer != null) {
-				preferences.put(meth.getName() + Type.getMethodDescriptor(meth), Type.getInternalName(prefer.value()));
+			// Generate Adapter Methods
+			for (final Entry<Method, FieldInfo> meth : methods.entrySet()) {
+				final Method method = meth.getKey();
+				final String descriptor = Type.getMethodDescriptor(method);
+				final String methodInfo = method.getName() + descriptor;
+				final String prefer = preferences.get(methodInfo);
+				final FieldInfo field = meth.getValue();
+				// either no preference, or this is preferred
+				if (!alreadyImplementedMethods.contains(methodInfo) && (prefer == null || field.getTypeInternalName().equals(prefer))) {
+					// null is Signature
+					cn.methods.add(newAdapterMethod(name, method, field));
+				}
 			}
-		}
 
-		// Generate Adapter Methods
-		for (final Entry<Method, FieldInfo> meth : methods.entrySet()) {
-			final Method method = meth.getKey();
-			final String descriptor = Type.getMethodDescriptor(method);
-			final String methodInfo = method.getName() + descriptor;
-			final String prefer = preferences.get(methodInfo);
-			final FieldInfo field = meth.getValue();
-			// either no preference, or this is preferred
-			if (!alreadyImplementedMethods.contains(methodInfo) && (prefer == null || field.getTypeInternalName().equals(prefer))) {
-				// null is Signature
-				cn.methods.add(newAdapterMethod(name, method, field));
+			// Generate Traits
+			final Map<Class<?>, Class<?>> traitInstances = new HashMap<Class<?>, Class<?>>();
+			for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
+				final TraitInfo info = trait.getValue();
+				final String binaryTraitName = info.getImplementation().getName() + "Concrete";
+				traitInstances.put(trait.getKey(), loader.defineClass(binaryTraitName, newConcreteTrait(info)));
 			}
+
+			cache = new ClassCache(loader.defineClass(binaryName, cn), traitInstances);
+			loadedNames.put(binaryName, cache);
 		}
 
-		// Generate Traits
-		final Map<Class<?>, Class<?>> traitInstances = new HashMap<Class<?>, Class<?>>();
-		for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
-			final TraitInfo info = trait.getValue();
-			final String binaryTraitName = info.getImplementation().getName() + "Concrete";
-			traitInstances.put(trait.getKey(), loader.defineClass(binaryTraitName, newConcreteTrait(info)));
-		}
-
-		final Class<?> implClass = loader.defineClass(binaryName, cn);
 		try {
+			final Class<?> implClass = cache.getImplementation();
 			final T inst = (T) implClass.newInstance();
 			injector.injectMembers(inst);
 			// Inject traits
 			for (final Field field : implClass.getDeclaredFields()) {
-				final Class<?> traitInstance = traitInstances.get(field.getType());
+				final Class<?> traitInstance = cache.getTraits().get(field.getType());
 				if (traitInstance != null) {
 					// Always 1 constructor:
 					final Constructor<?> cons = traitInstance.getConstructors()[0];
