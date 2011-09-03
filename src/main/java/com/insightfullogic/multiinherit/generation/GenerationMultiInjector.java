@@ -115,7 +115,7 @@ public class GenerationMultiInjector implements MultiInjector {
 				cn.interfaces.add(internal);
 				cn.fields.add(field);
 
-				for (final Method meth : inter.getDeclaredMethods()) {
+				for (final Method meth : inter.getMethods()) {
 					methods.put(meth, new FieldInfo(fieldName, internal, Type.getDescriptor(inter)));
 				}
 			}
