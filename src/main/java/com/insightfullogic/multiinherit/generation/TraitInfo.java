@@ -3,7 +3,7 @@ package com.insightfullogic.multiinherit.generation;
 import java.lang.reflect.Method;
 import java.util.List;
 
-public class TraitInfo {
+class TraitInfo {
 
 	private final Class<?> implementation;
 	private final Class<?> interfase;
@@ -17,7 +17,7 @@ public class TraitInfo {
 		return toImplement;
 	}
 
-	public TraitInfo(final Class<?> implementation, final Class<?> interfase, final List<Method> toImplement) {
+	TraitInfo(final Class<?> implementation, final Class<?> interfase, final List<Method> toImplement) {
 		super();
 		this.implementation = implementation;
 		this.interfase = interfase;

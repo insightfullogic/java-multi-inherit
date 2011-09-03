@@ -28,13 +28,6 @@
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>cobertura-maven-plugin</artifactId>
-				<configuration>
-					<instrumentation>
-						<ignores>
-							<ignore>com.insightfullogic.multiinherit.common.ResolutionInfo.*</ignore>
-						</ignores>
-					</instrumentation>
-				</configuration>
 				<executions>
 					<execution>
 						<goals>

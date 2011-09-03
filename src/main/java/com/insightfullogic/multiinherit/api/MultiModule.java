@@ -27,7 +27,7 @@ public class MultiModule extends AbstractModule {
 	}
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	protected void bindMulti(final Class<?>... classes) {
+	private void bindMulti(final Class<?>... classes) {
 		if (useGeneration) {
 			bind(MultiInjector.class).to(GenerationMultiInjector.class);
 			bind(Boolean.class).annotatedWith(Names.named("dump")).toInstance(dumpClasses);
@@ -55,7 +55,7 @@ class MultiProvider<T> implements Provider<T> {
 	}
 
 	@Inject
-	MultiInjector injector;
+	private MultiInjector injector;
 
 	@Override
 	public T get() {

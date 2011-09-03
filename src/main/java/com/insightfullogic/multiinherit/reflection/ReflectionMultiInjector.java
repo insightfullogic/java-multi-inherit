@@ -17,7 +17,7 @@ import com.insightfullogic.multiinherit.common.ResolutionInfo;
 public class ReflectionMultiInjector implements MultiInjector {
 
 	@Inject
-	Injector injector;
+	private Injector injector;
 
 	@SuppressWarnings("unchecked")
 	@Override

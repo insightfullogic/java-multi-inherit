@@ -11,11 +11,11 @@ import org.objectweb.asm.tree.ClassNode;
 import com.google.inject.Inject;
 import com.google.inject.name.Named;
 
-public class GeneratedClassLoader extends ClassLoader {
+class GeneratedClassLoader extends ClassLoader {
 
 	@Inject
 	@Named("dump")
-	Boolean dumpClasses;
+	private Boolean dumpClasses;
 
 	/**
 	 * Generate the bytecode for an ASM Tree Class, and then load it into the
@@ -24,7 +24,7 @@ public class GeneratedClassLoader extends ClassLoader {
 	 * @param cn
 	 * @return
 	 */
-	public synchronized Class<?> defineClass(final String binaryName, final ClassNode cn) {
+	synchronized Class<?> defineClass(final String binaryName, final ClassNode cn) {
 		final ClassWriter cw = new ClassWriter(0);
 		cn.accept(cw);
 		final byte[] b = cw.toByteArray();
