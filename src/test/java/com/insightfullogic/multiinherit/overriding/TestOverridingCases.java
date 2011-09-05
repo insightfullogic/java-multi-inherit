@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import com.google.inject.ProvisionException;
 import com.insightfullogic.multiinherit.api.MultiModule;
 import com.insightfullogic.multiinherit.simple.A;
 
@@ -23,4 +24,11 @@ public class TestOverridingCases {
 		// The A is proxied from AImpl
 		assertEquals(aImpl.a(), combined.a());
 	}
+
+	@Test(expected = ProvisionException.class)
+	public void customImplementationAndReflection() {
+		final Injector injector = Guice.createInjector(new MultiModule(false, CustomAB.class));
+		injector.getInstance(CustomAB.class);
+	}
+
 }

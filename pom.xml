@@ -70,5 +70,11 @@
 			<artifactId>guava</artifactId>
 			<version>r09</version>
 		</dependency>
+		<dependency>
+			<groupId>nl.jqno.equalsverifier</groupId>
+			<artifactId>equalsverifier</artifactId>
+			<version>1.0.2</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 </project>

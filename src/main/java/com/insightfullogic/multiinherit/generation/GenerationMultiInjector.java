@@ -186,23 +186,16 @@ public class GenerationMultiInjector implements MultiInjector {
 				}
 			}
 			return inst;
-		} catch (final InstantiationException e) {
-			throw new IllegalArgumentException(e);
-		} catch (final IllegalAccessException e) {
-			throw new IllegalArgumentException(e);
-		} catch (final InvocationTargetException e) {
-			throw new IllegalArgumentException(e);
 		} catch (final IllegalArgumentException e) {
 			throw e;
+		} catch (final Exception e) {
+			throw new IllegalArgumentException(e);
 		}
 	}
 
 	private Object getTrait(final Class<?> traitInterface, final Object parent) throws InvocationTargetException, InstantiationException,
 			IllegalAccessException {
 		final Class<?> traitClass = concreteTraits.get(traitInterface);
-		if (traitClass == null) {
-			throw new IllegalArgumentException("Unable to find implementation for trait: " + traitInterface);
-		}
 		// Always 1 constructor:
 		final Constructor<?> cons = traitClass.getConstructors()[0];
 		final Object traitInstance = cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, parent).toArray());

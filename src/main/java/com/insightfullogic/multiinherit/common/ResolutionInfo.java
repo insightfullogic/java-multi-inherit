@@ -3,21 +3,15 @@ package com.insightfullogic.multiinherit.common;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 
-public class ResolutionInfo {
+public final class ResolutionInfo {
 
 	private final String name;
 	private final Class<?>[] parameterTypes;
 
-	public ResolutionInfo(Method method) {
+	public ResolutionInfo(final Method method) {
 		super();
-		this.name = method.getName();
-		this.parameterTypes = method.getParameterTypes();
-	}
-	
-	@Override
-	public String toString() {
-		return "ResolutionInfo [name=" + name + ", parameterTypes="
-				+ Arrays.toString(parameterTypes) + "]";
+		name = method.getName();
+		parameterTypes = method.getParameterTypes();
 	}
 
 	@Override
@@ -30,14 +24,14 @@ public class ResolutionInfo {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
+	public boolean equals(final Object obj) {
 		if (this == obj)
 			return true;
 		if (obj == null)
 			return false;
 		if (getClass() != obj.getClass())
 			return false;
-		ResolutionInfo other = (ResolutionInfo) obj;
+		final ResolutionInfo other = (ResolutionInfo) obj;
 		if (name == null) {
 			if (other.name != null)
 				return false;
@@ -46,5 +40,5 @@ public class ResolutionInfo {
 		if (!Arrays.equals(parameterTypes, other.parameterTypes))
 			return false;
 		return true;
-	} 
+	}
 }

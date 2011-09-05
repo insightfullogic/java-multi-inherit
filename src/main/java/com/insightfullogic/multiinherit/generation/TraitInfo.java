@@ -31,11 +31,6 @@ class TraitInfo {
 		this.parentTraits = parentTraits;
 	}
 
-	@Override
-	public String toString() {
-		return "TraitInfo [implementation=" + implementation + ", interfase=" + interfase + ", toImplement=" + toImplement + "]";
-	}
-
 	public Class<?> getInterfase() {
 		return interfase;
 	}

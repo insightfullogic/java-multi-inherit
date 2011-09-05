@@ -29,7 +29,8 @@ public class ReflectionMultiInjector implements MultiInjector {
 			interfaces[parents.length] = combined;
 		} else {
 			interfaces = parents;
-			throw new UnsupportedOperationException("To be implemented in future versions");
+			throw new UnsupportedOperationException(
+					"It is impossible to do multiple class inheritance with the Reflection backend, try using the Generation backend");
 		}
 		final Map<ResolutionInfo, Method> preferences1 = new HashMap<ResolutionInfo, Method>();
 		for (final Method meth : combined.getDeclaredMethods()) {
