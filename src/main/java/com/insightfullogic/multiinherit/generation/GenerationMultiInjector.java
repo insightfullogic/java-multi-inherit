@@ -12,7 +12,6 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -32,6 +31,9 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Injector;
 import com.insightfullogic.multiinherit.api.MultiInjector;
@@ -47,12 +49,14 @@ public class GenerationMultiInjector implements MultiInjector {
 	private final String overrideAnn;
 
 	private final Map<String, ClassCache> loadedNames;
+	private final Map<Class<?>, Class<?>> concreteTraits;
 
 	@Inject
 	public GenerationMultiInjector(final Injector injector) {
 		injectAnn = Type.getDescriptor(Inject.class);
 		overrideAnn = Type.getDescriptor(Override.class);
-		loadedNames = new HashMap<String, ClassCache>();
+		loadedNames = Maps.newHashMap();
+		concreteTraits = Maps.newHashMap();
 		loader = AccessController.doPrivileged(new PrivilegedAction<GeneratedClassLoader>() {
 			@Override
 			public GeneratedClassLoader run() {
@@ -86,8 +90,9 @@ public class GenerationMultiInjector implements MultiInjector {
 					alreadyImplementedMethods.add(method.getName() + Type.getMethodDescriptor(method));
 				}
 			}
-			final Map<Method, FieldInfo> methods = new HashMap<Method, FieldInfo>();
-			final Map<Class<?>, TraitInfo> traits = new HashMap<Class<?>, TraitInfo>();
+			final Map<Method, FieldInfo> methods = Maps.newHashMap();
+			final Map<Class<?>, TraitInfo> traits = Maps.newHashMap();
+			final Set<Class<?>> immediateTraits = Sets.newHashSet();
 
 			for (final Class<?> inter : combined.getInterfaces()) {
 				// Create a field for every parent
@@ -99,14 +104,8 @@ public class GenerationMultiInjector implements MultiInjector {
 				final TraitWith traitWith = inter.getAnnotation(TraitWith.class);
 				if (traitWith != null) {
 					final Class<?> impl = traitWith.value();
-					// to implement = {required methods} - {implemented methods}
-					final List<Method> toImplement = new ArrayList<Method>(asList(inter.getDeclaredMethods()));
-					removeImplementedMethods(impl, toImplement);
-					if (combined.isInterface() && !toImplement.isEmpty()) {
-						throw new TypeHierachyException("Cannot combined interface " + combined.getName() + "with trait: " + inter.getName()
-								+ " since it has unimplemented methods");
-					}
-					traits.put(inter, new TraitInfo(impl, inter, toImplement));
+					immediateTraits.add(inter);
+					addTrait(combined, traits, inter, impl);
 				} else {
 					field.visibleAnnotations = asList(new AnnotationNode(injectAnn));
 				}
@@ -120,20 +119,25 @@ public class GenerationMultiInjector implements MultiInjector {
 				}
 			}
 
-			// final Validate trait final method implementations
-			for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
-				final List<Method> toImplement = new ArrayList<Method>(trait.getValue().getToImplement());
+			// Validate trait final method implementations
+			for (final Class<?> key : immediateTraits) {
+				final TraitInfo info = traits.get(key);
+				for (final Class<?> parent : info.getParentTraits().values()) {
+					removeImplementedMethods(parent, info.getToImplement());
+				}
+				final List<Method> toImplement = new ArrayList<Method>(info.getToImplement());
 				removeImplementedMethods(combined, toImplement);
 				if (!toImplement.isEmpty()) {
-					throw new TypeHierachyException(MessageFormat.format("Error composing trait {0} with class {1} Cannot implementations for {2}",
-							trait.getKey().getName(), combined.getName(), toImplement));
+					throw new TypeHierachyException(MessageFormat.format(
+							"Error composing trait {0} with class {1} Cannot find implementations for {2}", key.getName(), combined.getName(),
+							toImplement));
 				}
 			}
 
 			newConstructor(cn);
 
 			// Lookup preferences
-			final Map<String, String> preferences = new HashMap<String, String>();
+			final Map<String, String> preferences = Maps.newHashMap();
 			for (final Method meth : combined.getDeclaredMethods()) {
 				final Prefer prefer = meth.getAnnotation(Prefer.class);
 				if (prefer != null) {
@@ -156,11 +160,13 @@ public class GenerationMultiInjector implements MultiInjector {
 			}
 
 			// Generate Traits
-			final Map<Class<?>, Class<?>> traitInstances = new HashMap<Class<?>, Class<?>>();
+			final Map<Class<?>, Class<?>> traitInstances = Maps.newHashMap();
 			for (final Entry<Class<?>, TraitInfo> trait : traits.entrySet()) {
 				final TraitInfo info = trait.getValue();
 				final String binaryTraitName = info.getImplementation().getName() + "Concrete";
-				traitInstances.put(trait.getKey(), loader.defineClass(binaryTraitName, newConcreteTrait(info)));
+				final Class<?> generatedTraitImplementation = loader.defineClass(binaryTraitName, newConcreteTrait(info));
+				traitInstances.put(trait.getKey(), generatedTraitImplementation);
+				concreteTraits.put(trait.getKey(), generatedTraitImplementation);
 			}
 
 			cache = new ClassCache(loader.defineClass(binaryName, cn), traitInstances);
@@ -173,11 +179,21 @@ public class GenerationMultiInjector implements MultiInjector {
 			injector.injectMembers(inst);
 			// Inject traits
 			for (final Field field : implClass.getDeclaredFields()) {
-				final Class<?> traitInstance = cache.getTraits().get(field.getType());
-				if (traitInstance != null) {
+				final Class<?> traitClass = cache.getTraits().get(field.getType());
+				if (traitClass != null) {
 					// Always 1 constructor:
-					final Constructor<?> cons = traitInstance.getConstructors()[0];
-					field.set(inst, cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, inst).toArray()));
+					final Constructor<?> cons = traitClass.getConstructors()[0];
+					final Object traitInstance = cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, inst).toArray());
+					for (final Field f : traitInstance.getClass().getFields()) {
+						if (f.getName().startsWith("parent")) {
+							final Class<?> parentTrait = concreteTraits.get(f.getType());
+							final Constructor<?> parentCons = parentTrait.getConstructors()[0];
+							final Object parentInstance = parentCons.newInstance(traitInstance);
+							f.set(traitInstance, parentInstance);
+						}
+					}
+					field.set(inst, traitInstance);
+					// System.out.println(field.getName());
 				}
 			}
 			return inst;
@@ -190,6 +206,26 @@ public class GenerationMultiInjector implements MultiInjector {
 		} catch (final IllegalArgumentException e) {
 			throw e;
 		}
+	}
+
+	private <T> void addTrait(final Class<T> combined, final Map<Class<?>, TraitInfo> traits, final Class<?> inter, final Class<?> impl) {
+		// to implement = {required methods} - {implemented methods}
+		final List<Method> toImplement = Lists.newArrayList(inter.getMethods());
+		removeImplementedMethods(impl, toImplement);
+		if (combined.isInterface() && !toImplement.isEmpty()) {
+			throw new TypeHierachyException("Cannot combined interface " + combined.getName() + "with trait: " + inter.getName()
+					+ " since it has unimplemented methods");
+		}
+		final Map<Class<?>, Class<?>> parentTraits = Maps.newHashMap();
+		for (final Class<?> parentInter : inter.getInterfaces()) {
+			final TraitWith trait = parentInter.getAnnotation(TraitWith.class);
+			if (trait != null) {
+				final Class<?> parentImpl = trait.value();
+				parentTraits.put(parentInter, parentImpl);
+				addTrait(impl, traits, parentInter, parentImpl);
+			}
+		}
+		traits.put(inter, new TraitInfo(impl, inter, toImplement, parentTraits));
 	}
 
 	private void removeImplementedMethods(final Class<?> impl, final List<Method> toImplement) {
@@ -213,11 +249,13 @@ public class GenerationMultiInjector implements MultiInjector {
 		final Type superType = Type.getType(info.getImplementation());
 		final String implName = superType.getInternalName();
 		final ClassNode cn = new ClassNode();
+		final List<Method> toImplement = info.getToImplement();
+		final Map<Class<?>, Class<?>> parentTraits = info.getParentTraits();
 		cn.version = Opcodes.V1_6;
 		cn.access = Opcodes.ACC_PUBLIC;
 		cn.name = implName + "Concrete";
 		cn.superName = implName;
-		final List<Method> toImplement = info.getToImplement();
+
 		newParamConstructor(cn, types(toImplement.size(), interfaceType));
 
 		// add trait fields, one for each possible method overload
@@ -225,12 +263,30 @@ public class GenerationMultiInjector implements MultiInjector {
 			cn.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, "overload" + i, interfaceType.getDescriptor(), null, null));
 		}
 
-		int i = 0;
-		for (final Method method : toImplement) {
-			final FieldInfo fi = new FieldInfo("overload" + i, interfaceType.getInternalName(), interfaceType.getDescriptor());
-			cn.methods.add(newAdapterMethod(cn.name, method, fi));
-			i++;
+		{
+			int i = 0;
+			for (final Method method : toImplement) {
+				final FieldInfo fi = new FieldInfo("overload" + i, interfaceType.getInternalName(), interfaceType.getDescriptor());
+				cn.methods.add(newAdapterMethod(cn.name, method, fi));
+				i++;
+			}
 		}
+
+		// add fields for parent classes
+		{
+			int i = 0;
+			for (final Entry<Class<?>, Class<?>> parent : parentTraits.entrySet()) {
+				final Type parentInterfaceType = Type.getType(parent.getKey());
+				final String fieldName = "parent" + i;
+				cn.fields.add(new FieldNode(Opcodes.ACC_PUBLIC, fieldName, parentInterfaceType.getDescriptor(), null, null));
+				final FieldInfo fi = new FieldInfo(fieldName, parentInterfaceType.getInternalName(), parentInterfaceType.getDescriptor());
+				for (final Method method : parent.getValue().getDeclaredMethods()) {
+					cn.methods.add(newAdapterMethod(cn.name, method, fi));
+				}
+				i++;
+			}
+		}
+
 		return cn;
 	}
 
@@ -239,6 +295,15 @@ public class GenerationMultiInjector implements MultiInjector {
 		Arrays.fill(buff, val);
 		return buff;
 	}
+
+	//
+	// private Type[] concat(final Type[] l, final Type[] r) {
+	// final Type[] types = Arrays.copyOf(l, l.length + r.length);
+	// for (int i = 0; i < r.length; i++) {
+	// types[i + l.length] = r[i];
+	// }
+	// return types;
+	// }
 
 	private MethodNode newAdapterMethod(final String name, final Method method, final FieldInfo field) {
 		final Class<?>[] parameterTypes = method.getParameterTypes();

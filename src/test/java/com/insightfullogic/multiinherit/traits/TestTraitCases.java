@@ -66,4 +66,17 @@ public class TestTraitCases {
 		injector.getInstance(FailNumberMulti.class);
 	}
 
+	@Test
+	public void testTraitExtendingTrat() {
+		final Injector injector = Guice.createInjector(new MultiModule(true, true, ExtendedNumber.class));
+		final ExtendedNumber num1 = injector.getInstance(ExtendedNumber.class);
+		final ExtendedNumber num2 = injector.getInstance(ExtendedNumber.class);
+		final ExtendedNumber num3 = injector.getInstance(ExtendedNumber.class);
+		num1.setF(0.25f);
+		num2.setF(0.35f);
+		num3.setF(1.0f);
+
+		assertTrue(num1.isSimilar(num2));
+		assertTrue(num1.isNotSimilar(num3));
+	}
 }
