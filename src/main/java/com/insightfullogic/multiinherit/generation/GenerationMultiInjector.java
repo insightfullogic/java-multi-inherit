@@ -178,22 +178,11 @@ public class GenerationMultiInjector implements MultiInjector {
 			final T inst = (T) implClass.newInstance();
 			injector.injectMembers(inst);
 			// Inject traits
+			final Map<Class<?>, Class<?>> traits = cache.getTraits();
 			for (final Field field : implClass.getDeclaredFields()) {
-				final Class<?> traitClass = cache.getTraits().get(field.getType());
-				if (traitClass != null) {
-					// Always 1 constructor:
-					final Constructor<?> cons = traitClass.getConstructors()[0];
-					final Object traitInstance = cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, inst).toArray());
-					for (final Field f : traitInstance.getClass().getFields()) {
-						if (f.getName().startsWith("parent")) {
-							final Class<?> parentTrait = concreteTraits.get(f.getType());
-							final Constructor<?> parentCons = parentTrait.getConstructors()[0];
-							final Object parentInstance = parentCons.newInstance(traitInstance);
-							f.set(traitInstance, parentInstance);
-						}
-					}
-					field.set(inst, traitInstance);
-					// System.out.println(field.getName());
+				final Class<?> traitInterface = field.getType();
+				if (traits.containsKey(traitInterface)) {
+					field.set(inst, getTrait(traitInterface, inst));
 				}
 			}
 			return inst;
@@ -206,6 +195,23 @@ public class GenerationMultiInjector implements MultiInjector {
 		} catch (final IllegalArgumentException e) {
 			throw e;
 		}
+	}
+
+	private Object getTrait(final Class<?> traitInterface, final Object parent) throws InvocationTargetException, InstantiationException,
+			IllegalAccessException {
+		final Class<?> traitClass = concreteTraits.get(traitInterface);
+		if (traitClass == null) {
+			throw new IllegalArgumentException("Unable to find implementation for trait: " + traitInterface);
+		}
+		// Always 1 constructor:
+		final Constructor<?> cons = traitClass.getConstructors()[0];
+		final Object traitInstance = cons.newInstance(Collections.nCopies(cons.getParameterTypes().length, parent).toArray());
+		for (final Field f : traitInstance.getClass().getFields()) {
+			if (f.getName().startsWith("parent")) {
+				f.set(traitInstance, getTrait(f.getType(), traitInstance));
+			}
+		}
+		return traitInstance;
 	}
 
 	private <T> void addTrait(final Class<T> combined, final Map<Class<?>, TraitInfo> traits, final Class<?> inter, final Class<?> impl) {
@@ -295,15 +301,6 @@ public class GenerationMultiInjector implements MultiInjector {
 		Arrays.fill(buff, val);
 		return buff;
 	}
-
-	//
-	// private Type[] concat(final Type[] l, final Type[] r) {
-	// final Type[] types = Arrays.copyOf(l, l.length + r.length);
-	// for (int i = 0; i < r.length; i++) {
-	// types[i + l.length] = r[i];
-	// }
-	// return types;
-	// }
 
 	private MethodNode newAdapterMethod(final String name, final Method method, final FieldInfo field) {
 		final Class<?>[] parameterTypes = method.getParameterTypes();
