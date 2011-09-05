@@ -67,7 +67,7 @@ public class TestTraitCases {
 	}
 
 	@Test
-	public void testTraitExtendingTrat() {
+	public void testTraitExtendingTrait() {
 		final Injector injector = Guice.createInjector(new MultiModule(true, true, ExtendedNumber.class));
 		final ExtendedNumber num1 = injector.getInstance(ExtendedNumber.class);
 		final ExtendedNumber num2 = injector.getInstance(ExtendedNumber.class);
